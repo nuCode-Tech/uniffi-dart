@@ -105,8 +105,31 @@ impl<'a> DartWrapper<'a> {
 
         let (type_helper_code, functions_definitions) = &self.type_renderer.render();
 
+        fn rewrite_symbol_module(fun_name: &str, source_module: &str, target_module: &str) -> String {
+            if source_module == target_module {
+                return fun_name.to_owned();
+            }
+
+            let ffi_prefix = format!("ffi_{}_", source_module);
+            if let Some(rest) = fun_name.strip_prefix(&ffi_prefix) {
+                return format!("ffi_{}_{}", target_module, rest);
+            }
+
+            let uniffi_prefix = format!("uniffi_{}_", source_module);
+            if let Some(rest) = fun_name.strip_prefix(&uniffi_prefix) {
+                return format!("uniffi_{}_{}", target_module, rest);
+            }
+
+            fun_name.to_owned()
+        }
+
         // Generate @Native external function definitions
-        fn uniffi_function_definitions(ci: &ComponentInterface, asset_id: &str) -> dart::Tokens {
+        fn uniffi_function_definitions(
+            ci: &ComponentInterface,
+            asset_id: &str,
+            source_module: &str,
+            target_module: &str,
+        ) -> dart::Tokens {
             let mut definitions = quote!();
             let mut defined_functions = HashSet::new(); // Track defined function names
 
@@ -118,6 +141,8 @@ impl<'a> DartWrapper<'a> {
                     // Function name already exists, skip to prevent duplicate definition
                     continue;
                 }
+
+                let native_symbol_name = rewrite_symbol_module(&fun_name, source_module, target_module);
 
                 // For @Native, we need both native types (for the annotation) and Dart types (for the external declaration)
                 let native_return_type = match fun.return_type() {
@@ -163,7 +188,8 @@ impl<'a> DartWrapper<'a> {
                 // assetId references the _uniffiAssetId constant
                 definitions.append(quote! {
                     @Native<$(&native_return_type) Function($(&native_args))>(
-                      assetId: $asset_id
+                                            assetId: $asset_id,
+                                            symbol: $(quoted(native_symbol_name))
                     )
                     external $(&dart_return_type) $fun_name($(&dart_args));
                     $['\n']
@@ -174,6 +200,9 @@ impl<'a> DartWrapper<'a> {
         }
 
         let asset_id_suffix = &self.config.asset_id(); // e.g., "uniffi:hello_world"
+        let source_ffi_module =
+            DartCodeOracle::infer_ffi_module(self.ci, || self.ci.namespace().to_owned());
+        let target_ffi_module = self.config.cdylib_name();
 
         quote! {
             library $package_name;
@@ -190,7 +219,12 @@ impl<'a> DartWrapper<'a> {
             $(functions_definitions)
 
             // FFI function definitions using @Native
-            $(uniffi_function_definitions(self.ci, "_uniffiAssetId"))
+            $(uniffi_function_definitions(
+                self.ci,
+                "_uniffiAssetId",
+                &source_ffi_module,
+                &target_ffi_module,
+            ))
 
             // API version and checksum validation
             void _checkApiVersion() {
