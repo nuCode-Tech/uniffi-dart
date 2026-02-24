@@ -35,7 +35,7 @@ impl CodeType for ObjectCodeType {
     }
 
     fn canonical_name(&self) -> String {
-        self.id.to_string()
+        self.type_label()
     }
 
     fn literal(&self, _literal: &Literal) -> String {
@@ -45,7 +45,9 @@ impl CodeType for ObjectCodeType {
     fn ffi_converter_name(&self) -> String {
         match self.imp {
             ObjectImpl::Struct => self.canonical_name().to_string(), // Objects will use factory methods
-            ObjectImpl::CallbackTrait => format!("FfiConverterCallbackInterface{}", self.id),
+            ObjectImpl::CallbackTrait => {
+                format!("FfiConverterCallbackInterface{}", self.type_label())
+            }
             ObjectImpl::Trait => self.canonical_name().to_string(),
         }
     }
@@ -53,7 +55,7 @@ impl CodeType for ObjectCodeType {
 
 impl Renderable for ObjectCodeType {
     fn render_type_helper(&self, type_helper: &dyn TypeHelperRenderer) -> dart::Tokens {
-        if type_helper.check(&self.id) {
+        if type_helper.check(&self.canonical_name()) {
             quote!()
         } else if let Some(obj) = type_helper.get_object(&self.id) {
             generate_object(obj, type_helper)
