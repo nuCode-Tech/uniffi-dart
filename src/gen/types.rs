@@ -38,6 +38,26 @@ impl TypeHelperRenderer for TypeHelpersRenderer<'_> {
         let mut map = self.include_once_names.borrow_mut();
         let found = map.insert(name.to_string(), ty.clone()).is_some();
         drop(map);
+
+        if !found {
+            match ty {
+                Type::Optional { inner_type } | Type::Sequence { inner_type } => {
+                    let inner = inner_type.as_ref();
+                    self.include_once_check(&inner.as_codetype().canonical_name(), inner);
+                }
+                Type::Map {
+                    key_type,
+                    value_type,
+                } => {
+                    let key = key_type.as_ref();
+                    let value = value_type.as_ref();
+                    self.include_once_check(&key.as_codetype().canonical_name(), key);
+                    self.include_once_check(&value.as_codetype().canonical_name(), value);
+                }
+                _ => {}
+            }
+        }
+
         found
     }
 
@@ -529,7 +549,7 @@ pub fn generate_type(ty: &Type) -> dart::Tokens {
         Type::Float32 | Type::Float64 => quote!(double),
         Type::String => quote!(String),
         Type::Bytes => quote!(Uint8List),
-        Type::Object { name, .. } => quote!($name),
+        Type::Object { name, .. } => quote!($(DartCodeOracle::class_name(name))),
         Type::Boolean => quote!(bool),
         Type::Optional { inner_type } => quote!($(generate_type(inner_type))?),
         Type::Sequence { inner_type } => quote!(List<$(generate_type(inner_type))>),
@@ -539,8 +559,9 @@ pub fn generate_type(ty: &Type) -> dart::Tokens {
         } => quote!(Map<$(generate_type(key_type)), $(generate_type(value_type))>),
         Type::Enum { name, .. } => quote!($(DartCodeOracle::class_name(name))),
         Type::Duration => quote!(Duration),
-        Type::Record { name, .. } => quote!($name),
-        Type::Custom { name, .. } => quote!($name),
+        Type::Record { name, .. } => quote!($(DartCodeOracle::class_name(name))),
+        Type::Custom { name, .. } => quote!($(DartCodeOracle::class_name(name))),
+        Type::CallbackInterface { name, .. } => quote!($(DartCodeOracle::class_name(name))),
         _ => todo!("Type::{:?}", ty),
     }
 }

@@ -26,7 +26,7 @@ impl CodeType for RecordCodeType {
     }
 
     fn canonical_name(&self) -> String {
-        self.id.to_string()
+        self.type_label()
     }
 
     fn literal(&self, _literal: &Literal) -> String {
@@ -36,7 +36,7 @@ impl CodeType for RecordCodeType {
 
 impl Renderable for RecordCodeType {
     fn render_type_helper(&self, type_helper: &dyn TypeHelperRenderer) -> dart::Tokens {
-        if type_helper.check(&self.id) {
+        if type_helper.check(&self.canonical_name()) {
             quote!()
         } else if let Some(record_) = type_helper.get_record(&self.id) {
             generate_record(record_, type_helper)
